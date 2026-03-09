@@ -157,6 +157,7 @@ class CQLTrainer(TorchTrainer):
         """
         Policy and Alpha Loss
         """
+        # JUST USED FOR ALPHA LOSS?
         new_obs_actions, policy_mean, policy_log_std, log_pi, *_ = self.policy(
             obs, reparameterize=True, return_log_prob=True,
         )
@@ -171,25 +172,6 @@ class CQLTrainer(TorchTrainer):
             alpha_loss = 0
             alpha = 1
 
-        if self.num_qs == 1:
-            q_new_actions = self.qf1(obs, new_obs_actions)
-        else:
-            q_new_actions = torch.min(
-                self.qf1(obs, new_obs_actions),
-                self.qf2(obs, new_obs_actions),
-            )
-
-        policy_loss = (alpha*log_pi - q_new_actions).mean()
-
-        if self._current_epoch < self.policy_eval_start:
-            """
-            For the initial few epochs, try doing behaivoral cloning, if needed
-            conventionally, there's not much difference in performance with having 20k 
-            gradient steps here, or not having it
-            """
-            policy_log_prob = self.policy.log_prob(obs, actions)
-            policy_loss = (alpha * log_pi - policy_log_prob).mean()
-        
         """
         QF Loss
         """
@@ -231,7 +213,7 @@ class CQLTrainer(TorchTrainer):
             qf2_loss = self.qf_criterion(q2_pred, q_target)
 
         ## add CQL
-        random_actions_tensor = torch.FloatTensor(q2_pred.shape[0] * self.num_random, actions.shape[-1]).uniform_(-1, 1) # .cuda()
+        random_actions_tensor = torch.FloatTensor(q2_pred.shape[0] * self.num_random, actions.shape[-1]).uniform_(-1, 1).to(ptu.device)
         curr_actions_tensor, curr_log_pis = self._get_policy_actions(obs, num_actions=self.num_random, network=self.policy)
         new_curr_actions_tensor, new_log_pis = self._get_policy_actions(next_obs, num_actions=self.num_random, network=self.policy)
         q1_rand = self._get_tensor_values(obs, random_actions_tensor, network=self.qf1)
@@ -286,13 +268,42 @@ class CQLTrainer(TorchTrainer):
         # Update the Q-functions iff 
         self._num_q_update_steps += 1
         self.qf1_optimizer.zero_grad()
-        qf1_loss.backward(retain_graph=True)
+        qf1_loss.backward(retain_graph=True) 
         self.qf1_optimizer.step()
 
         if self.num_qs > 1:
             self.qf2_optimizer.zero_grad()
-            qf2_loss.backward(retain_graph=True)
+            qf2_loss.backward(retain_graph=False) # TODO: double check if setting False is okay
             self.qf2_optimizer.step()
+
+        # [NOTE]: I updated this to be here bc of an error with the gradient
+        # must recompute the values.
+        # TODO: should the alpha update be calculated with the un-updated Q functions 
+        # or the already updated Q-functions? should it be calculated 
+        # before or after the Q function update?
+        new_obs_actions, policy_mean, policy_log_std, log_pi, *_ = self.policy(
+            obs, reparameterize=True, return_log_prob=True,
+        )
+        
+        if self.num_qs == 1:
+            q_new_actions = self.qf1(obs, new_obs_actions)
+        else:
+            q_new_actions = torch.min(
+                self.qf1(obs, new_obs_actions),
+                self.qf2(obs, new_obs_actions),
+            )
+
+        policy_loss = (alpha*log_pi - q_new_actions).mean()
+
+        if self._current_epoch < self.policy_eval_start:
+            """
+            For the initial few epochs, try doing behaivoral cloning, if needed
+            conventionally, there's not much difference in performance with having 20k 
+            gradient steps here, or not having it
+            """
+            policy_log_prob = self.policy.log_prob(obs, actions)
+            policy_loss = (alpha * log_pi - policy_log_prob).mean()
+        
 
         self._num_policy_update_steps += 1
         self.policy_optimizer.zero_grad()

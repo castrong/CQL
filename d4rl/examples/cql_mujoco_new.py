@@ -9,6 +9,7 @@ from rlkit.torch.networks import FlattenMlp
 from rlkit.torch.torch_rl_algorithm import TorchBatchRLAlgorithm
 
 import argparse, os
+from datetime import datetime
 import numpy as np
 
 import h5py
@@ -120,7 +121,7 @@ if __name__ == "__main__":
         env_name='Hopper-v2',
         sparse_reward=False,
         algorithm_kwargs=dict(
-            num_epochs=3000,
+            num_epochs=500,
             num_eval_steps_per_epoch=1000,
             num_trains_per_train_loop=1000,  
             num_expl_steps_per_train_loop=1000,
@@ -167,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument('--min_q_version', default=3, type=int)               # min_q_version = 3 (CQL(H)), version = 2 (CQL(rho)) 
     parser.add_argument('--lagrange_thresh', default=5.0, type=float)         # the value of tau, corresponds to the CQL(lagrange) version
     parser.add_argument('--seed', default=10, type=int)
+    parser.add_argument('--exp_name', default='exp', type=str)
 
     args = parser.parse_args()
     enable_gpus(args.gpu)
@@ -186,7 +188,8 @@ if __name__ == "__main__":
     variant['env_name'] = args.env
     variant['seed'] = args.seed
 
-    rnd = np.random.randint(0, 1000000)
-    setup_logger(os.path.join('CQL_offline_mujoco_runs', str(rnd)), variant=variant, base_log_dir='/nfs/kun1/users/aviralkumar/random_expert_CQL_runs')
+    timestamp = datetime.now().strftime('%m_%d_%Y:%H_%M_%S')
+    exp_name = f"{timestamp}_{args.exp_name}"
+    setup_logger(exp_name, variant=variant, base_log_dir=os.path.expanduser('./CQL_logs'))
     ptu.set_gpu_mode(True)
     experiment(variant)
