@@ -8,6 +8,9 @@ from rlkit.torch.sac.cql import CQLTrainer
 from rlkit.torch.networks import FlattenMlp
 from rlkit.torch.torch_rl_algorithm import TorchBatchRLAlgorithm
 
+import lqr_env
+
+
 import argparse, os
 from datetime import datetime
 import numpy as np
@@ -31,6 +34,23 @@ def experiment(variant):
     
     obs_dim = expl_env.observation_space.low.size
     action_dim = eval_env.action_space.low.size
+
+    eval_env.seed(variant['seed']) # TODO: how should deal with seeding?
+
+
+    # def seed_all(epoch):
+    #     seed_shift = epoch * 9999
+    #     mod_value = 999999
+    #     env_seed = (seed + seed_shift) % mod_value
+    #     eval_env_seed = (seed + 10000 + seed_shift) % mod_value
+    #     torch.manual_seed(env_seed)
+    #     np.random.seed(env_seed)
+    #     #env.seed(env_seed) # Don't need to seed here bc it's not getting used in each epoch?
+    #     #env.action_space.np_random.seed(env_seed)
+    #     eval_env.seed(test_env_seed)
+    #     eval_env.action_space.np_random.seed(test_env_seed)
+       
+    # seed_all(epoch=0)
 
     M = variant['layer_size']
     qf1 = FlattenMlp(
@@ -74,10 +94,43 @@ def experiment(variant):
         variant['replay_buffer_size'],
         expl_env,
     )
-    if variant['load_buffer'] and buffer_filename is not None:
+
+
+    # TODO: test this
+    if variant['dataset_path'] is not None:
+        with h5py.File(variant['dataset_path'], 'r') as f:
+            dataset = {k: f[k][:] for k in f.keys()}
+
+        # the possible keys should be 
+        # observations
+        # actions
+        # rewards 
+        # next observations 
+        # terminals 
+        # if there aren't rewards, next obsv, or terminals, generate those from the env
+        fill_in = 'rewards' not in dataset or 'next_observations' not in dataset or 'terminals' not in dataset
+        if fill_in:
+            print("FILLING IN, UNTESTED!!")
+            n_data = dataset['observations'].shape[0]
+            
+            rewards = np.zeros(n_data, dtype=np.float32)
+            next_obs = np.zeros_like(dataset['observations'])
+            terminals = np.zeros(n_data, dtype=np.float32)
+
+            for i in range(n_data):
+                eval_env.reset()
+                eval_env.set_state(dataset['observations'][i])
+                next_obs[i], rewards[i], terminals[i], _ = eval_env.step(dataset['actions'][i])
+        
+            dataset['next_observations'] = next_obs 
+            dataset['rewards'] = rewards
+            dataset['terminals'] = terminals
+
+        load_hdf5(dataset, replay_buffer)
+    elif variant['load_buffer'] and buffer_filename is not None:
         replay_buffer.load_buffer(buffer_filename)
     elif 'random-expert' in variant['env_name']:
-        load_hdf5(d4rl.basic_dataset(eval_env), replay_buffer) 
+        load_hdf5(d4rl.basic_dataset(eval_env), replay_buffer)
     else:
         load_hdf5(d4rl.qlearning_dataset(eval_env), replay_buffer)
        
@@ -118,6 +171,7 @@ if __name__ == "__main__":
         replay_buffer_size=int(2E6),
         buffer_filename=None,
         load_buffer=None,
+        dataset_path=None,
         env_name='Hopper-v2',
         sparse_reward=False,
         algorithm_kwargs=dict(
@@ -168,7 +222,9 @@ if __name__ == "__main__":
     parser.add_argument('--min_q_version', default=3, type=int)               # min_q_version = 3 (CQL(H)), version = 2 (CQL(rho)) 
     parser.add_argument('--lagrange_thresh', default=5.0, type=float)         # the value of tau, corresponds to the CQL(lagrange) version
     parser.add_argument('--seed', default=10, type=int)
+    parser.add_argument('--num_epochs', default=500, type=int)
     parser.add_argument('--exp_name', default='exp', type=str)
+    parser.add_argument('--dataset_path', default=None, type=str)  # path to custom HDF5 dataset
 
     args = parser.parse_args()
     enable_gpus(args.gpu)
@@ -184,12 +240,21 @@ if __name__ == "__main__":
     
     variant['buffer_filename'] = None
 
+    variant['algorithm_kwargs']['num_epochs'] = args.num_epochs
     variant['load_buffer'] = True
     variant['env_name'] = args.env
     variant['seed'] = args.seed
+    variant['dataset_path'] = args.dataset_path
 
     timestamp = datetime.now().strftime('%m_%d_%Y:%H_%M_%S')
     exp_name = f"{timestamp}_{args.exp_name}"
-    setup_logger(exp_name, variant=variant, base_log_dir=os.path.expanduser('./CQL_logs'))
+    setup_logger(exp_name, variant=variant, base_log_dir=os.path.expanduser('./CQL_logs'), snapshot_mode="all")
     ptu.set_gpu_mode(True)
     experiment(variant)
+
+# TODO: dataset generation for the LQR environment so that we can load it in. 
+# make a dataset generation script that takes from our optimal controller stuff
+# in the DDH, and that has as a parameter the amount to scale u by.
+
+# from the dataset load the state, action pairs, and then use the environment to get the rest?
+# oh that won't work with the done as well 
