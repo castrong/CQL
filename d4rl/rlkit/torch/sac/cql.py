@@ -59,7 +59,9 @@ class CQLTrainer(TorchTrainer):
 
         self.use_automatic_entropy_tuning = use_automatic_entropy_tuning
         if self.use_automatic_entropy_tuning:
+            print("target entropy in cql: ", target_entropy)
             if target_entropy:
+                print("setting target entropy to: ", target_entropy)
                 self.target_entropy = target_entropy
             else:
                 self.target_entropy = -np.prod(self.env.action_space.shape).item() 

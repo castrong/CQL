@@ -109,6 +109,7 @@ def experiment(variant):
         # terminals 
         # if there aren't rewards, next obsv, or terminals, generate those from the env
         fill_in = 'rewards' not in dataset or 'next_observations' not in dataset or 'terminals' not in dataset
+        # fill_in = True
         if fill_in:
             print("FILLING IN, UNTESTED!!")
             n_data = dataset['observations'].shape[0]
@@ -118,10 +119,23 @@ def experiment(variant):
             terminals = np.zeros(n_data, dtype=np.float32)
 
             for i in range(n_data):
+                print("filling in data: ", i)
                 eval_env.reset()
                 eval_env.set_state(dataset['observations'][i])
                 next_obs[i], rewards[i], terminals[i], _ = eval_env.step(dataset['actions'][i])
-        
+
+                print("obs: ", dataset['observations'][i])
+                print("action: ", dataset['actions'][i])
+                print("next obs saved: ", dataset['next_observations'][i])
+                print("new next obs: ", next_obs[i])
+                
+                print("rewards saved: ", dataset['rewards'][i])
+                print("new rewards: ", rewards[i])
+
+                print("terminals saved: ", dataset['terminals'][i])
+                print("new terminals: ", terminals[i])
+
+
             dataset['next_observations'] = next_obs 
             dataset['rewards'] = rewards
             dataset['terminals'] = terminals
@@ -195,6 +209,9 @@ if __name__ == "__main__":
             policy_eval_start=40000,
             num_qs=2,
 
+            # target entropy
+            target_entropy=None,
+
             # min Q
             temp=1.0,
             min_q_version=3,
@@ -225,6 +242,8 @@ if __name__ == "__main__":
     parser.add_argument('--num_epochs', default=500, type=int)
     parser.add_argument('--exp_name', default='exp', type=str)
     parser.add_argument('--dataset_path', default=None, type=str)  # path to custom HDF5 dataset
+    parser.add_argument('--use_automatic_entropy_tuning', default="True", type=str) 
+    parser.add_argument('--target_entropy', default=None, type=float) 
 
     args = parser.parse_args()
     enable_gpus(args.gpu)
@@ -237,7 +256,13 @@ if __name__ == "__main__":
     variant['trainer_kwargs']['lagrange_thresh'] = args.lagrange_thresh
     if args.lagrange_thresh < 0.0:
         variant['trainer_kwargs']['with_lagrange'] = False
-    
+
+    variant['trainer_kwargs']['use_automatic_entropy_tuning'] = (args.use_automatic_entropy_tuning == "True")
+    variant['trainer_kwargs']['target_entropy'] = args.target_entropy
+    print("target entropy in main script: ", args.target_entropy)
+
+    print("use automatic entropy tuning: ", args.use_automatic_entropy_tuning)
+
     variant['buffer_filename'] = None
 
     variant['algorithm_kwargs']['num_epochs'] = args.num_epochs

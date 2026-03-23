@@ -15,6 +15,8 @@ METRICS = [
     ("trainer/Log Pis Mean",        "Log Pis (Mean)"),
     ("trainer/Alpha",               "Alpha"),
     ("trainer/Alpha Loss",          "Alpha Loss"),
+    ("trainer/Alpha_prime",         "Alpha Prime"),
+    ("trainer/alpha prime loss",    "Alpha Prime Loss"),
     ("evaluation/Average Returns",  "Average Returns"),
     ("evaluation/Returns Std",      "Returns Std"),
 ]

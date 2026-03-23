@@ -70,7 +70,7 @@ class LQREnv(gym.Env):
         if x_bounds is None:
             x_bounds = np.array([[-10.0, 10.0]] * self.n_states)
         if u_bounds is None:
-            u_bounds = np.array([[-5.0, 5.0]] * self.n_controls)
+            u_bounds = np.array([[-2.5, 2.5]] * self.n_controls)
 
         self.x_bounds = x_bounds
         self.u_bounds = u_bounds
